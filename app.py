@@ -15,7 +15,18 @@ VOICE_ID = "OxtnTByceklF3rlnCNqe"
 MAX_CHARS = 900 
 
 st.set_page_config(page_title="FB2 Audio Maker", page_icon="🎙️")
-st.title("🎙️ FB2 в Аудиокнигу (Версия с папкой)")
+st.title("🎙️ FB2 в Аудиокнигу")
+
+# Проверка наличия ffmpeg
+def check_ffmpeg():
+    try:
+        subprocess.run(["ffmpeg", "-version"], capture_output=True)
+        return True
+    except FileNotFoundError:
+        return False
+
+if not check_ffmpeg():
+    st.error("⚠️ Системная программа ffmpeg не найдена. Пожалуйста, убедитесь, что файл packages.txt создан на GitHub и приложение перезагружено.")
 
 def parse_fb2_universal(uploaded_file):
     try:
@@ -55,7 +66,6 @@ uploaded_file = st.file_uploader("Выберите файл FB2", type="fb2")
 
 if uploaded_file:
     if st.button("Начать озвучку"):
-        # Очищаем имя файла от лишних точек и пробелов для названия папки
         book_name = os.path.splitext(uploaded_file.name)[0].strip()
         work_dir, temp_dir = "audio_out", "temp_frags"
         
@@ -87,30 +97,30 @@ if uploaded_file:
                     ch_filename = f"Chapter_{idx:03d}.mp3"
                     ch_path = os.path.join(work_dir, ch_filename)
                     
-                    list_file = f"list_{idx}.txt"
+                    list_file = os.path.join(temp_dir, f"list_{idx}.txt")
                     with open(list_file, "w") as f:
-                        for df in downloaded: f.write(f"file '{os.path.abspath(df)}'\n")
+                        for df in downloaded:
+                            f.write(f"file '{os.path.abspath(df)}'\n")
                     
-                    # Склейка через ffmpeg
-                    try:
-                        subprocess.run(["ffmpeg", "-f", "concat", "-safe", "0", "-i", list_file, "-c", "copy", "-y", ch_path], capture_output=True)
+                    # Попытка склейки
+                    result = subprocess.run(["ffmpeg", "-f", "concat", "-safe", "0", "-i", list_file, "-c", "copy", "-y", ch_path], capture_output=True, text=True)
+                    
+                    if result.returncode == 0:
                         final_files.append((ch_path, ch_filename))
-                    except:
-                        st.warning(f"Ошибка склейки главы {idx}")
+                    else:
+                        st.error(f"Ошибка в главе {idx}: {result.stderr[:200]}")
                     
-                    if os.path.exists(list_file): os.remove(list_file)
-                    for df in downloaded: os.remove(df)
+                    for df in downloaded: 
+                        if os.path.exists(df): os.remove(df)
                 
                 progress_bar.progress(idx / len(chapters))
 
-            # СОЗДАНИЕ ZIP С ПАПКОЙ ВНУТРИ
-            zip_name = f"{book_name}.zip"
-            with zipfile.ZipFile(zip_name, "w") as z:
-                for f_path, f_name in final_files:
-                    # Третий аргумент в write задает путь ВНУТРИ архива
-                    # f"{book_name}/{f_name}" создаст папку с именем книги
-                    z.write(f_path, arcname=os.path.join(book_name, f_name))
-            
-            st.success(f"Книга готова! Папка в архиве: {book_name}")
-            with open(zip_name, "rb") as f:
-                st.download_button("📥 Скачать ZIP-архив", f, file_name=zip_name)
+            if final_files:
+                zip_name = f"{book_name}.zip"
+                with zipfile.ZipFile(zip_name, "w") as z:
+                    for f_path, f_name in final_files:
+                        z.write(f_path, arcname=os.path.join(book_name, f_name))
+                
+                st.success(f"Готово!")
+                with open(zip_name, "rb") as f:
+                    st.download_button("📥 Скачать результат", f, file_name=zip_name)
