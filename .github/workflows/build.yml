@@ -4,6 +4,9 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -27,7 +30,6 @@ jobs:
 
       - name: Build APK
         run: |
-          # Убираем возможные ошибки прав доступа
           flet build apk --no-docker --verbose
 
       - name: Upload APK
